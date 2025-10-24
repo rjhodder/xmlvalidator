@@ -1,5 +1,8 @@
 import React, { useState, useRef } from "react";
 import Editor from "@monaco-editor/react";
+import { ReflexContainer, ReflexSplitter, ReflexElement } from "react-reflex";
+import "./App.css";
+import "react-reflex/styles.css";
 
 export default function App() {
   const [xml, setXml] = useState("");
@@ -110,10 +113,10 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
-  const getPanelColor = (score) => {
-    if (score >= 90) return "bg-green-600 border-green-400";
-    if (score >= 50) return "bg-yellow-600 border-yellow-400";
-    return "bg-red-600 border-red-400";
+  const getPanelColorClass = (score) => {
+    if (score >= 90) return "result-panel--pass";
+    if (score >= 50) return "result-panel--warn";
+    return "result-panel--fail";
   };
 
   const getPanelIcon = (score) => {
@@ -124,56 +127,57 @@ export default function App() {
 
   return (
     <div
-      className="min-h-screen bg-gray-900 text-gray-100 flex flex-col items-center p-6 space-y-6"
+      className="app-container"
       onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
       onDragLeave={() => setDragging(false)}
       onDrop={handleDrop}
     >
-      <h1 className="text-2xl font-semibold">XML & XSD Validator</h1>
+      <h1>XML & XSD Validator</h1>
 
       {dragging && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center text-2xl font-bold text-white z-50">
+        <div className="dragging-overlay">
           Drop XML/XSD file(s) anywhere
         </div>
       )}
 
-      <div className="w-full max-w-6xl grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label className="block mb-2 font-semibold">XML</label>
-          <Editor
-            height="400px"
-            width= "75%"
-            defaultLanguage="xml"
-            theme= "vs-dark"    
-            value={xml}
-            onChange={(value) => setXml(value || "")}
-            onMount={(editor) => (xmlEditorRef.current = editor)}
-          />
-        </div>
-        <div>
-          <label className="block mb-2 font-semibold">XSD</label>
-          <Editor
-            height="400px"
-            width="75%"
-            defaultLanguage="xml"
-            theme="vs-dark"
-            value={xsd}
-            onChange={(value) => setXsd(value || "")}
-          />
-        </div>
+      <div className="editors-container">
+        <ReflexContainer orientation="vertical">
+          <ReflexElement className="editor-wrapper" flex={0.5}>
+            <label>XML</label>
+            <Editor
+              defaultLanguage="xml"
+              theme="vs-dark"
+              value={xml}
+              onChange={(value) => setXml(value || "")}
+              onMount={(editor) => (xmlEditorRef.current = editor)}
+            />
+          </ReflexElement>
+
+          <ReflexSplitter />
+
+          <ReflexElement className="editor-wrapper" flex={0.5}>
+            <label>XSD</label>
+            <Editor
+              defaultLanguage="xml"
+              theme="vs-dark"
+              value={xsd}
+              onChange={(value) => setXsd(value || "")}
+            />
+          </ReflexElement>
+        </ReflexContainer>
       </div>
 
-      <div className="flex space-x-4">
+      <div className="button-container">
         <button
           onClick={handleValidate}
           disabled={loading}
-          className="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded font-semibold disabled:opacity-50"
+          className="button validate-button"
         >
           {loading ? "Validating..." : "Validate"}
         </button>
         <button
           onClick={downloadCSVReport}
-          className="bg-gray-700 hover:bg-gray-600 px-6 py-2 rounded font-semibold"
+          className="button report-button"
         >
           Download CSV Report
         </button>
@@ -181,17 +185,17 @@ export default function App() {
 
       {result && (
         <div
-          className={`w-full max-w-4xl p-4 rounded shadow-md border-2 text-white ${getPanelColor(result.score)}`}
+          className={`result-panel ${getPanelColorClass(result.score)}`}
         >
-          <h2 className="font-bold mb-2">
+          <h2>
             {getPanelIcon(result.score)}{" "}
             {result.score >= 90 ? "XML is valid!" :
              result.score >= 50 ? "Some issues detected" :
              "Validation failed"}
           </h2>
-          <p className="font-semibold mb-2">Score: {result.score} / 100</p>
+          <p>Score: {result.score} / 100</p>
           {result.errors && result.errors.length > 0 && (
-            <ul className="list-disc pl-5 space-y-1 text-sm">
+            <ul>
               {result.errors.map((err, i) => (
                 <li key={i}>{err}</li>
               ))}

@@ -31,6 +31,7 @@ async def validate(xml: UploadFile = File(...), xsd: UploadFile = File(...)):
 
     return {"status": status, "errors": errors}
 
+
 def get_xpath(elem):
     """Generate XPath string for an element."""
     path_parts = []
@@ -51,55 +52,71 @@ def get_xpath(elem):
         elem = parent
     return "/" + "/".join(path_parts)
 
+
 @app.post("/validate_csv")
 async def validate_csv(xml: UploadFile = File(...), xsd: UploadFile = File(...)):
-    # Parse both files
-    xml_doc = etree.parse(xml.file)
-    schema_tree = etree.parse(xsd.file)
-    schema_root = schema_tree.getroot()   # ✅ FIXED
-    xsd_doc = etree.XMLSchema(schema_root)
-
+    """Enhanced CSV report validation — now includes element values and safe parsing."""
     results = []
-    total = 0
-    passed = 0
-    failed = 0
+    total = passed = failed = 0
 
-    # Validate entire XML against schema
+    # --- Safe XML/XSD parsing ---
+    try:
+        xml_doc = etree.parse(xml.file)
+    except Exception as e:
+        return StreamingResponse(
+            StringIO(f"element,line,status,value,message\nN/A,N/A,FAIL,,Invalid XML: {str(e)}"),
+            media_type="text/csv"
+        )
+
+    try:
+        schema_tree = etree.parse(xsd.file)
+        schema_root = schema_tree.getroot()
+        xsd_doc = etree.XMLSchema(schema_root)
+    except Exception as e:
+        return StreamingResponse(
+            StringIO(f"element,line,status,value,message\nN/A,N/A,FAIL,,Invalid XSD: {str(e)}"),
+            media_type="text/csv"
+        )
+
+    schema_ns = schema_root.get("targetNamespace")
+
+    # --- Full document validation ---
     try:
         xsd_doc.assertValid(xml_doc)
         results.append({
-            "element": xml_doc.getroot().tag,
-            "namespace": etree.QName(xml_doc.getroot()).namespace or "",
-            "xpath": get_xpath(xml_doc.getroot()),
+            "element": etree.QName(xml_doc.getroot()).localname,
             "line": xml_doc.getroot().sourceline or "",
             "status": "PASS",
+            "value": xml_doc.getroot().text.strip() if xml_doc.getroot().text else "",
             "message": "Document is valid"
         })
         passed += 1
     except etree.DocumentInvalid as e:
         failed += 1
         results.append({
-            "element": xml_doc.getroot().tag,
-            "namespace": etree.QName(xml_doc.getroot()).namespace or "",
-            "xpath": get_xpath(xml_doc.getroot()),
+            "element": etree.QName(xml_doc.getroot()).localname,
             "line": xml_doc.getroot().sourceline or "",
             "status": "FAIL",
+            "value": xml_doc.getroot().text.strip() if xml_doc.getroot().text else "",
             "message": str(e.error_log.last_error) if e.error_log else str(e)
         })
     total += 1
 
-    # Namespace from schema
-    schema_ns = schema_root.get("targetNamespace")
-
-    # Validate each element by namespace + name match
+    # --- Element-by-element validation ---
     for elem in xml_doc.getroot().iter():
         if not isinstance(elem.tag, str):
             continue
         total += 1
         q_elem = etree.QName(elem)
         elem_ns = q_elem.namespace or ""
-        found_match = False
+        elem_value = elem.text.strip() if elem.text and elem.text.strip() else ""
 
+        # Include attribute values if present
+        if elem.attrib:
+            attr_text = ", ".join([f'{k}="{v}"' for k, v in elem.attrib.items()])
+            elem_value = f"{elem_value} [{attr_text}]" if elem_value else f"[{attr_text}]"
+
+        found_match = False
         for e in schema_root.iter("{http://www.w3.org/2001/XMLSchema}element"):
             name = e.get("name")
             if not name:
@@ -113,38 +130,35 @@ async def validate_csv(xml: UploadFile = File(...), xsd: UploadFile = File(...))
             passed += 1
             results.append({
                 "element": q_elem.localname,
-                "namespace": elem_ns,
-                "xpath": get_xpath(elem),
                 "line": elem.sourceline or "",
                 "status": "PASS",
+                "value": elem_value,
                 "message": ""
             })
         else:
             failed += 1
             results.append({
                 "element": q_elem.localname,
-                "namespace": elem_ns,
-                "xpath": get_xpath(elem),
                 "line": elem.sourceline or "",
                 "status": "FAIL",
+                "value": elem_value,
                 "message": f"Element '{q_elem.localname}' not found in schema namespace '{schema_ns}'"
             })
 
-    # Summary
+    # --- Summary row ---
     percent_valid = round((passed / total) * 100, 2) if total else 0.0
     results.append({})
     results.append({
         "element": "SUMMARY",
-        "namespace": "",
-        "xpath": "",
         "line": "",
         "status": f"{passed}/{total} Passed",
+        "value": "",
         "message": f"{percent_valid}% Valid ({failed} Failed)"
     })
 
-    # Generate CSV output
+    # --- Generate CSV output ---
     output = StringIO()
-    writer = csv.DictWriter(output, fieldnames=["element", "namespace", "xpath", "line", "status", "message"])
+    writer = csv.DictWriter(output, fieldnames=["element", "line", "status", "value", "message"])
     writer.writeheader()
     for row in results:
         writer.writerow(row)

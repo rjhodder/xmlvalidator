@@ -9,59 +9,77 @@ export default function App() {
   const [dragging, setDragging] = useState(false);
   const xmlEditorRef = useRef(null);
 
+  // Validate XML against XSD
   const handleValidate = async () => {
+    if (!xml || !xsd) {
+      alert("Please provide both XML and XSD.");
+      return;
+    }
+
     setLoading(true);
     setResult(null);
 
-    const formData = new FormData();
-    formData.append("xml", new Blob([xml], { type: "text/xml" }), "file.xml");
-    formData.append("xsd", new Blob([xsd], { type: "text/xml" }), "file.xsd");
+    try {
+      const formData = new FormData();
+      formData.append("xml", new Blob([xml], { type: "text/xml" }), "file.xml");
+      formData.append("xsd", new Blob([xsd], { type: "text/xml" }), "file.xsd");
 
-    const res = await fetch("http://localhost:8000/validate", {
-      method: "POST",
-      body: formData,
-    });
-    const data = await res.json();
-    setResult(data);
-    setLoading(false);
+      const res = await fetch("http://localhost:8000/validate", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      setResult(data);
 
-    // highlight XML errors
-    if (xmlEditorRef.current) {
-      const monaco = await import("monaco-editor");
-      const markers = [];
-      if (data.status === "FAIL") {
-        for (const err of data.errors) {
-          const match = err.match(/:(\d+):\d*:/);
-          if (match) {
-            const line = parseInt(match[1]);
-            markers.push({
-              startLineNumber: line,
-              endLineNumber: line,
-              startColumn: 1,
-              endColumn: 200,
-              message: err,
-              severity: monaco.MarkerSeverity.Error,
-            });
+      // Highlight errors in the XML editor
+      if (xmlEditorRef.current) {
+        const monaco = await import("monaco-editor");
+        const markers = [];
+        if (data.status === "FAIL") {
+          for (const err of data.errors) {
+            const match = err.match(/:(\d+):\d*:/);
+            if (match) {
+              const line = parseInt(match[1]);
+              markers.push({
+                startLineNumber: line,
+                endLineNumber: line,
+                startColumn: 1,
+                endColumn: 200,
+                message: err,
+                severity: monaco.MarkerSeverity.Error,
+              });
+            }
           }
         }
+        monaco.editor.setModelMarkers(
+          xmlEditorRef.current.getModel(),
+          "validation",
+          markers
+        );
       }
-      monaco.editor.setModelMarkers(
-        xmlEditorRef.current.getModel(),
-        "validation",
-        markers
-      );
+    } catch (e) {
+      alert("Validation failed: " + e.message);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // handle drag-and-drop
+  // Handle drag-and-drop for both XML and XSD
   const handleDrop = async (event) => {
     event.preventDefault();
     setDragging(false);
-    const files = event.dataTransfer.files;
+
+    const files = Array.from(event.dataTransfer.files);
     for (const file of files) {
       const text = await file.text();
-      if (file.name.endsWith(".xml")) setXml(text);
-      else if (file.name.endsWith(".xsd")) setXsd(text);
+      const name = file.name.toLowerCase();
+      if (name.endsWith(".xml")) {
+        setXml(text);
+      } else if (name.endsWith(".xsd")) {
+        setXsd(text);
+      } else {
+        alert(`Unsupported file type: ${file.name}`);
+      }
     }
   };
 

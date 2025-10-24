@@ -48,13 +48,34 @@ body {
   height: 100%;
   display: flex;
   flex-direction: column;
+  overflow: hidden; /* Prevent content from overflowing */
 }
 
-.editor-wrapper label {
-  display: block;
+.editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 0.5rem;
+}
+
+.editor-header label {
   font-weight: 600;
 }
+
+.upload-button {
+  background-color: #4a5568;
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.25rem;
+  border: none;
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+
+.upload-button:hover {
+  background-color: #2d3748;
+}
+
 
 .button-container {
   display: flex;

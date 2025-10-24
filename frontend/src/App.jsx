@@ -11,6 +11,8 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [dragging, setDragging] = useState(false);
   const xmlEditorRef = useRef(null);
+  const xmlInputRef = useRef(null);
+  const xsdInputRef = useRef(null);
 
   // Validate XML for inline markers
   const handleValidate = async () => {
@@ -88,6 +90,23 @@ export default function App() {
     }
   };
 
+  // Handle file selection from upload button
+  const handleFileSelect = (event, type) => {
+    const file = event.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const content = e.target.result;
+        if (type === "xml") {
+          setXml(content);
+        } else if (type === "xsd") {
+          setXsd(content);
+        }
+      };
+      reader.readAsText(file);
+    }
+  };
+
   // Download CSV report
   const downloadCSVReport = async () => {
     const formData = new FormData();
@@ -140,10 +159,28 @@ export default function App() {
         </div>
       )}
 
+      <input
+        type="file"
+        ref={xmlInputRef}
+        style={{ display: "none" }}
+        accept=".xml"
+        onChange={(e) => handleFileSelect(e, "xml")}
+      />
+      <input
+        type="file"
+        ref={xsdInputRef}
+        style={{ display: "none" }}
+        accept=".xsd"
+        onChange={(e) => handleFileSelect(e, "xsd")}
+      />
+
       <div className="editors-container">
         <ReflexContainer orientation="vertical">
           <ReflexElement className="editor-wrapper" flex={0.5}>
-            <label>XML</label>
+            <div className="editor-header">
+              <label>XML</label>
+              <button className="upload-button" onClick={() => xmlInputRef.current.click()}>Upload XML</button>
+            </div>
             <Editor
               defaultLanguage="xml"
               theme="vs-dark"
@@ -156,7 +193,10 @@ export default function App() {
           <ReflexSplitter />
 
           <ReflexElement className="editor-wrapper" flex={0.5}>
-            <label>XSD</label>
+            <div className="editor-header">
+              <label>XSD</label>
+              <button className="upload-button" onClick={() => xsdInputRef.current.click()}>Upload XSD</button>
+            </div>
             <Editor
               defaultLanguage="xml"
               theme="vs-dark"

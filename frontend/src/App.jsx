@@ -9,7 +9,7 @@ export default function App() {
   const [dragging, setDragging] = useState(false);
   const xmlEditorRef = useRef(null);
 
-  // Validate XML against XSD
+  // Validate XML for inline markers
   const handleValidate = async () => {
     if (!xml || !xsd) {
       alert("Please provide both XML and XSD.");
@@ -29,9 +29,15 @@ export default function App() {
         body: formData,
       });
       const data = await res.json();
-      setResult(data);
 
-      // Highlight errors in the XML editor
+      const score =
+        data.status === "PASS"
+          ? 100
+          : Math.max(0, 100 - (data.errors ? data.errors.length * 10 : 0));
+
+      setResult({ ...data, score });
+
+      // Monaco inline markers
       if (xmlEditorRef.current) {
         const monaco = await import("monaco-editor");
         const markers = [];
@@ -64,7 +70,7 @@ export default function App() {
     }
   };
 
-  // Handle drag-and-drop for both XML and XSD
+  // Drag-and-drop XML/XSD
   const handleDrop = async (event) => {
     event.preventDefault();
     setDragging(false);
@@ -73,23 +79,53 @@ export default function App() {
     for (const file of files) {
       const text = await file.text();
       const name = file.name.toLowerCase();
-      if (name.endsWith(".xml")) {
-        setXml(text);
-      } else if (name.endsWith(".xsd")) {
-        setXsd(text);
-      } else {
-        alert(`Unsupported file type: ${file.name}`);
-      }
+      if (name.endsWith(".xml")) setXml(text);
+      else if (name.endsWith(".xsd")) setXsd(text);
+      else alert(`Unsupported file type: ${file.name}`);
     }
+  };
+
+  // Download CSV report
+  const downloadCSVReport = async () => {
+    const formData = new FormData();
+    formData.append("xml", new Blob([xml], { type: "text/xml" }), "file.xml");
+    formData.append("xsd", new Blob([xsd], { type: "text/xml" }), "file.xsd");
+
+    const res = await fetch("http://localhost:8000/validate_csv", {
+      method: "POST",
+      body: formData
+    });
+
+    if (!res.ok) {
+      alert("CSV generation failed");
+      return;
+    }
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "validation-report.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const getPanelColor = (score) => {
+    if (score >= 90) return "bg-green-600 border-green-400";
+    if (score >= 50) return "bg-yellow-600 border-yellow-400";
+    return "bg-red-600 border-red-400";
+  };
+
+  const getPanelIcon = (score) => {
+    if (score >= 90) return "✅";
+    if (score >= 50) return "⚠️";
+    return "❌";
   };
 
   return (
     <div
       className="min-h-screen bg-gray-900 text-gray-100 flex flex-col items-center p-6 space-y-6"
-      onDragOver={(e) => {
-        e.preventDefault();
-        setDragging(true);
-      }}
+      onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
       onDragLeave={() => setDragging(false)}
       onDrop={handleDrop}
     >
@@ -106,8 +142,9 @@ export default function App() {
           <label className="block mb-2 font-semibold">XML</label>
           <Editor
             height="400px"
+            width= "75%"
             defaultLanguage="xml"
-            theme="vs-dark"
+            theme= "vs-dark"    
             value={xml}
             onChange={(value) => setXml(value || "")}
             onMount={(editor) => (xmlEditorRef.current = editor)}
@@ -117,6 +154,7 @@ export default function App() {
           <label className="block mb-2 font-semibold">XSD</label>
           <Editor
             height="400px"
+            width="75%"
             defaultLanguage="xml"
             theme="vs-dark"
             value={xsd}
@@ -125,24 +163,34 @@ export default function App() {
         </div>
       </div>
 
-      <button
-        onClick={handleValidate}
-        disabled={loading}
-        className="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded font-semibold disabled:opacity-50"
-      >
-        {loading ? "Validating..." : "Validate"}
-      </button>
+      <div className="flex space-x-4">
+        <button
+          onClick={handleValidate}
+          disabled={loading}
+          className="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded font-semibold disabled:opacity-50"
+        >
+          {loading ? "Validating..." : "Validate"}
+        </button>
+        <button
+          onClick={downloadCSVReport}
+          className="bg-gray-700 hover:bg-gray-600 px-6 py-2 rounded font-semibold"
+        >
+          Download CSV Report
+        </button>
+      </div>
 
       {result && (
         <div
-          className={`w-full max-w-4xl p-4 rounded ${
-            result.status === "PASS" ? "bg-green-800" : "bg-red-800"
-          }`}
+          className={`w-full max-w-4xl p-4 rounded shadow-md border-2 text-white ${getPanelColor(result.score)}`}
         >
           <h2 className="font-bold mb-2">
-            {result.status === "PASS" ? "✅ XML is valid!" : "❌ Validation failed"}
+            {getPanelIcon(result.score)}{" "}
+            {result.score >= 90 ? "XML is valid!" :
+             result.score >= 50 ? "Some issues detected" :
+             "Validation failed"}
           </h2>
-          {result.errors.length > 0 && (
+          <p className="font-semibold mb-2">Score: {result.score} / 100</p>
+          {result.errors && result.errors.length > 0 && (
             <ul className="list-disc pl-5 space-y-1 text-sm">
               {result.errors.map((err, i) => (
                 <li key={i}>{err}</li>

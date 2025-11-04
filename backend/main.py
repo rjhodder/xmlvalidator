@@ -1,9 +1,11 @@
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from io import StringIO
 import csv
 from lxml import etree
+import os
 
 app = FastAPI()
 
@@ -14,6 +16,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Serve the frontend
+app.mount("/assets", StaticFiles(directory="..\\frontend\\dist\\assets"), name="assets")
+
+@app.get("/")
+async def read_index():
+    return FileResponse("..\\frontend\\dist\\index.html")
+
+@app.get("/{catchall:path}")
+async def read_catchall(catchall: str):
+    # if the path is a file in the dist folder, serve it
+    path = f"..\\frontend\\dist\\{catchall}"
+    if os.path.exists(path):
+        return FileResponse(path)
+    return FileResponse("..\\frontend\\dist\\index.html")
+
 
 @app.post("/validate")
 async def validate(xml: UploadFile = File(...), xsd: UploadFile = File(...)):
